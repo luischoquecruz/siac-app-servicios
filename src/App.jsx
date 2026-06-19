@@ -427,7 +427,7 @@ const emptyForm = () => ({
 // ══════════════════════════════════════════════════════════════
 //  BUSCADOR DE ACTIVIDADES
 // ══════════════════════════════════════════════════════════════
-function BuscadorActividades({ actividades, value, onChange }) {
+function BuscadorActividades({ actividades, value, onChange, error }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const ref = useRef(null);
@@ -445,7 +445,7 @@ function BuscadorActividades({ actividades, value, onChange }) {
 
   const estilos = {
     contenedor: { position: "relative" },
-    disparador: { width:"100%", border:"1px solid var(--border)", borderRadius:8, padding:"9px 12px", fontSize:13, boxSizing:"border-box", background:"var(--bg-card)", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" },
+    disparador: { width:"100%", border: error ? "1.5px solid var(--danger-text)" : "1px solid var(--border)", borderRadius:8, padding:"9px 12px", fontSize:13, boxSizing:"border-box", background:"var(--bg-card)", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" },
     dropdown: { position:"absolute", top:"100%", left:0, right:0, background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:10, marginTop:5, zIndex:100, boxShadow:"var(--shadow-lg)", maxHeight:320, display:"flex", flexDirection:"column", overflow:"hidden" },
     inputBusqueda: { width:"100%", border:"1px solid var(--border)", borderRadius:6, padding:"6px 10px", fontSize:12, boxSizing:"border-box", outline:"none", background:"var(--bg-card)", color:"var(--text-main)" },
     item: (sel) => ({ padding:"8px 12px", cursor:"pointer", fontSize:13, background:sel?"var(--bg-accent)":"transparent", color:"var(--text-main)", borderBottom:"1px solid var(--border-light)", transition:"background .15s" }),
@@ -491,20 +491,34 @@ function VistaPublica({ cfg, onAdminLogin, toggleDarkMode }) {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [fieldErrors, setFieldErrors] = useState({});
+  const setF = (k, v) => { setForm(p => ({ ...p, [k]: v })); setFieldErrors(p => { if (p[k]) { const n = { ...p }; delete n[k]; return n; } return p; }); };
   const C = cfg;
   const T = cfg.textos;
+
+  const FIELD_LABELS = {
+    fecha: "Fecha", tipo: "Tipo de usuario", nombre: "Nombre completo",
+    programa: "Programa / Área", actividadId: "Servicio solicitado",
+    modalidad: "Modalidad de atención", descripcion: "Descripción del caso",
+    calificacion: "Calificación"
+  };
+
+  const inpErr = (k) => fieldErrors[k] ? { ...inp, border: "1.5px solid var(--danger-text)" } : inp;
 
   const handleSubmit = async () => {
     const req = ["tipo", "nombre", "actividadId", "modalidad"];
     if (C.requierePrograma) req.push("programa");
     if (C.requiereDescripcion) req.push("descripcion");
-    if (!form.calificacion) { setError("Seleccione una calificación."); return; }
-    if (req.some(k => !form[k])) {
-      setError("Complete todos los campos obligatorios (*).");
+    const errs = {};
+    req.forEach(k => { if (!form[k]) errs[k] = true; });
+    if (!form.calificacion) errs.calificacion = true;
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      const campos = Object.keys(errs).map(k => FIELD_LABELS[k]).join(", ");
+      setError(`Complete los siguientes campos obligatorios: ${campos}.`);
       return;
     }
-    setError(""); setLoading(true);
+    setFieldErrors({}); setError(""); setLoading(true);
     const act = C.actividades.find(a => String(a.id) === String(form.actividadId));
     const nuevo = { ...form, id: Date.now(), creadoEn: new Date().toISOString(), actividad: act?.label || "" };
     try {
@@ -556,18 +570,18 @@ function VistaPublica({ cfg, onAdminLogin, toggleDarkMode }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 5 }}>Fecha *</label>
-              <input type="date" value={form.fecha} onChange={e => setF("fecha", e.target.value)} style={inp} />
+              <input type="date" value={form.fecha} onChange={e => setF("fecha", e.target.value)} style={inpErr("fecha")} />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 5 }}>Tipo de usuario *</label>
-              <select value={form.tipo} onChange={e => setF("tipo", e.target.value)} style={inp}>
+              <select value={form.tipo} onChange={e => setF("tipo", e.target.value)} style={inpErr("tipo")}>
                 <option value="">-- Seleccione --</option>
                 {C.tipos.map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 5 }}>Nombre completo *</label>
-              <input value={form.nombre} onChange={e => setF("nombre", e.target.value)} style={inp} placeholder={T.placeholder.nombre} />
+              <input value={form.nombre} onChange={e => setF("nombre", e.target.value)} style={inpErr("nombre")} placeholder={T.placeholder.nombre} />
             </div>
 
             {C.mostrarCampoPrograma && (
@@ -575,13 +589,13 @@ function VistaPublica({ cfg, onAdminLogin, toggleDarkMode }) {
                 <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 5 }}>
                   Programa / Área{C.requierePrograma ? " *" : ""}
                 </label>
-                <input value={form.programa} onChange={e => setF("programa", e.target.value)} style={inp} placeholder={T.placeholder.programa} />
+                <input value={form.programa} onChange={e => setF("programa", e.target.value)} style={inpErr("programa")} placeholder={T.placeholder.programa} />
               </div>
             )}
 
             <div style={{ gridColumn: "1/-1" }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 5 }}>Servicio solicitado *</label>
-              <BuscadorActividades actividades={C.actividades} value={form.actividadId} onChange={v => setF("actividadId", v)} />
+              <BuscadorActividades actividades={C.actividades} value={form.actividadId} onChange={v => setF("actividadId", v)} error={!!fieldErrors.actividadId} />
             </div>
 
             {/* Modalidad */}
@@ -590,9 +604,10 @@ function VistaPublica({ cfg, onAdminLogin, toggleDarkMode }) {
               <div style={{ display: "flex", gap: 10 }}>
                 {C.modalidades.map(m => {
                   const sel = form.modalidad === m;
+                  const modErr = !!fieldErrors.modalidad && !sel;
                   return (
                     <div key={m} onClick={() => setF("modalidad", m)}
-                      style={{ flex: 1, border: `2px solid ${sel ? C.colorAcento : "var(--border-light)"}`, borderRadius: 10, padding: "12px 8px", textAlign: "center", cursor: "pointer", background: sel ? "var(--bg-accent)" : "var(--bg-card)", transform: sel ? "scale(1.03)" : "scale(1)", boxShadow: sel ? "var(--shadow-sm)" : "none" }}>
+                      style={{ flex: 1, border: `2px solid ${modErr ? "var(--danger-text)" : sel ? C.colorAcento : "var(--border-light)"}`, borderRadius: 10, padding: "12px 8px", textAlign: "center", cursor: "pointer", background: sel ? "var(--bg-accent)" : "var(--bg-card)", transform: sel ? "scale(1.03)" : "scale(1)", boxShadow: sel ? "var(--shadow-sm)" : "none" }}>
                       <div style={{ fontSize: 22 }}>{C.modalidadIconos[m] || "📍"}</div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: sel ? C.colorAcento : "var(--text-secondary)", marginTop: 3 }}>{m}</div>
                     </div>
@@ -607,12 +622,12 @@ function VistaPublica({ cfg, onAdminLogin, toggleDarkMode }) {
                   Descripción del caso{C.requiereDescripcion ? " *" : ""}
                 </label>
                 <textarea value={form.descripcion} onChange={e => setF("descripcion", e.target.value)} rows={3}
-                  style={{ ...inp, resize: "vertical" }} placeholder={T.placeholder.descripcion} />
+                  style={{ ...inpErr("descripcion"), resize: "vertical" }} placeholder={T.placeholder.descripcion} />
               </div>
             )}
 
             {/* Calificación */}
-            <div style={{ gridColumn: "1/-1", background: "var(--bg-warning)", border: "1px solid var(--border-accent)", borderRadius: 12, padding: 18 }}>
+            <div style={{ gridColumn: "1/-1", background: "var(--bg-warning)", border: `1.5px solid ${fieldErrors.calificacion ? "var(--danger-text)" : "var(--border-accent)"}`, borderRadius: 12, padding: 18 }}>
               <label style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)", display: "block", marginBottom: 10 }}>{T.calificacionLabel} *</label>
               <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 8 }}>
                 {[1, 2, 3, 4, 5].map(s => (
